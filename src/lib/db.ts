@@ -16,13 +16,13 @@ function createConnection() {
 
   const db = new Database(file);
 
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
   /**
-   * Ayni veritabanini birden fazla surec acabilir (dev sunucusu calisirken
-   * `next build` gibi). Kilit varsa aninda hata vermek yerine bekle.
+   * busy_timeout en once ayarlanmali: WAL pragma veya migrate sirasinda
+   * baska bir surec kilidi tutuyorsa bekleyebilsin.
    */
   db.pragma("busy_timeout = 10000");
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
 
   migrate(db);
   encryptStoredTokens(db);
@@ -148,19 +148,40 @@ function addColumn(
   column: string,
   definition: string,
 ) {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as {
-    name: string;
-  }[];
-
-  if (columns.some((item) => item.name === column)) return;
-  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  /**
+   * PRAGMA okuma ve ALTER TABLE arasinda baska bir surec ayni migration'i
+   * calistirabilir (orn. Coolify'da coklu worker). Transaction + EXCLUSIVE
+   * kilit ile atomik yapiyoruz.
+   */
+  const run = db.transaction(() => {
+    const columns = db.prepare(`PRAGMA table_info(${table})`).all() as {
+      name: string;
+    }[];
+    if (columns.some((item) => item.name === column)) return;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  });
+  run.exclusive();
 }
 
-export const db = globalThis.__dolphinDb ?? createConnection();
-
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__dolphinDb = db;
+function getDb(): Database.Database {
+  if (globalThis.__dolphinDb) return globalThis.__dolphinDb;
+  const conn = createConnection();
+  if (process.env.NODE_ENV !== "production") {
+    globalThis.__dolphinDb = conn;
+  }
+  return conn;
 }
+
+/**
+ * Lazy getter: ilk erisimde baglanti kurulur. Bu sayede `db.ts` import
+ * edilmesi tek basina SQLite'i acmaz; build-time worker'larinda kilitlenme olmaz.
+ */
+export const db: Database.Database = new Proxy({} as Database.Database, {
+  get(_target, prop) {
+    return (getDb() as never)[prop];
+  },
+});
+
 
 export type UserRow = {
   id: number;
