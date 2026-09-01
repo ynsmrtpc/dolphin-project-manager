@@ -1,69 +1,104 @@
-import Image from "next/image";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { FolderGit2, Settings2 } from "lucide-react";
 
-export default function Home() {
+import { ProjectList, type ProjectRow } from "@/components/home/ProjectList";
+import { RefreshRepos } from "@/components/home/RefreshRepos";
+import { Reveal } from "@/components/motion/Reveal";
+import { MetaStrip, PageHeader } from "@/components/ui/PageHeader";
+import { db } from "@/lib/db";
+import { isRepoMetaStale, repoMetaSyncedAt, syncRepoMeta } from "@/lib/repos";
+import { getT } from "@/lib/i18n/server";
+import { requireUser } from "@/lib/session";
+
+export const dynamic = "force-dynamic";
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("home.title") };
+}
+
+export default async function HomePage() {
+  const user = await requireUser();
+  const t = await getT();
+
+  // Yildiz/aciklama/son push bilgisi bayatladiysa tek istekle hepsini tazele.
+  let syncedAt = repoMetaSyncedAt(user.id);
+  if (isRepoMetaStale(syncedAt)) {
+    try {
+      await syncRepoMeta(user);
+      syncedAt = repoMetaSyncedAt(user.id);
+    } catch {
+      /* Tazeleme basarisizsa kayitli veriyle devam ediyoruz. */
+    }
+  }
+
+  const projects = db
+    .prepare(
+      `SELECT r.id, r.full_name, r.name, r.owner, r.description, r.is_private,
+              r.html_url, r.language, r.stars, r.pushed_at,
+              (SELECT COUNT(*) FROM notes n WHERE n.repo_id = r.id) AS note_count,
+              (SELECT COUNT(*) FROM todos t WHERE t.repo_id = r.id AND t.done = 0) AS open_todos,
+              (SELECT COUNT(*) FROM todos t WHERE t.repo_id = r.id AND t.done = 1) AS done_todos
+         FROM repos r
+        WHERE r.user_id = ? AND r.is_archived = 0
+        ORDER BY r.pushed_at DESC NULLS LAST, r.full_name`,
+    )
+    .all(user.id) as ProjectRow[];
+
+  const totals = projects.reduce(
+    (acc, project) => ({
+      notes: acc.notes + project.note_count,
+      open: acc.open + project.open_todos,
+      done: acc.done + project.done_todos,
+    }),
+    { notes: 0, open: 0, done: 0 },
+  );
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <Reveal className="flex flex-col gap-6">
+      <PageHeader
+        title={t("home.title")}
+        description={t("home.description")}
+        actions={
+          <>
+            <RefreshRepos syncedAt={syncedAt} />
+            <Link href="/repos" className="btn btn-sm">
+              <Settings2 className="size-4" strokeWidth={1.75} aria-hidden="true" />
+              {t("shell.repoSelection")}
+            </Link>
+          </>
+        }
+      />
+
+      {projects.length === 0 ? (
+        <div className="flex flex-col items-center rounded-box border border-dashed border-base-300 px-6 py-20 text-center">
+          <FolderGit2
+            className="size-8 text-base-content/20"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          />
+          <h2 className="mt-4 text-[15px] font-medium">{t("home.emptyTitle")}</h2>
+          <p className="mt-1.5 max-w-sm text-[13px] leading-relaxed text-base-content/50">
+            {t("home.emptyBody")}
           </p>
+          <Link href="/repos" className="btn btn-primary btn-sm mt-6">
+            {t("home.emptyAction")}
+          </Link>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      ) : (
+        <>
+          <MetaStrip
+            items={[
+              { label: t("home.statProjects"), value: projects.length },
+              { label: t("home.statOpenTodos"), value: totals.open },
+              { label: t("home.statDone"), value: totals.done },
+              { label: t("home.statNotes"), value: totals.notes },
+            ]}
+          />
+
+          <ProjectList projects={projects} />
+        </>
+      )}
+    </Reveal>
   );
 }
