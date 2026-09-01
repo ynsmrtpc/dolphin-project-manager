@@ -4,30 +4,37 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, RotateCcw, Trash2 } from "lucide-react";
 
-import { deleteArchivedRepo, restoreArchivedRepo } from "@/lib/actions";
+import {
+  DeleteRepoDialog,
+  type DeletableRepo,
+} from "@/components/repos/DeleteRepoDialog";
+import { restoreArchivedRepo } from "@/lib/actions";
 import { formatRelative } from "@/lib/format";
 import { useLocale, useT } from "@/lib/i18n/client";
 
-export type ArchivedRepo = {
-  repoId: number;
+export type ArchivedRepo = DeletableRepo & {
   name: string;
-  fullName: string;
-  notes: number;
-  todos: number;
   archivedAt: string | null;
+  /** Kalici silmeye kalan gun; saklama suresi kapaliysa null. */
+  daysLeft: number | null;
 };
 
-export function ArchivedRepos({ repos }: { repos: ArchivedRepo[] }) {
+export function ArchivedRepos({
+  repos,
+  retentionDays,
+}: {
+  repos: ArchivedRepo[];
+  retentionDays: number;
+}) {
   const router = useRouter();
   const t = useT();
   const locale = useLocale();
   const [pending, startTransition] = useTransition();
-  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState<DeletableRepo | null>(null);
 
-  function run(action: () => Promise<void>) {
+  function run(action: () => Promise<unknown>) {
     startTransition(async () => {
       await action();
-      setConfirmId(null);
       router.refresh();
     });
   }
@@ -40,13 +47,14 @@ export function ArchivedRepos({ repos }: { repos: ArchivedRepo[] }) {
           strokeWidth={1.75}
           aria-hidden="true"
         />
-        <h2 className="eyebrow">
-          {t("archive.title", { count: repos.length })}
-        </h2>
+        <h2 className="eyebrow">{t("archive.title", { count: repos.length })}</h2>
       </div>
 
       <p className="text-[12px] leading-relaxed text-base-content/50">
-        {t("archive.description")}
+        {t("archive.description")}{" "}
+        {retentionDays > 0
+          ? t("archive.retention", { days: retentionDays })
+          : t("archive.retentionOff")}
       </p>
 
       <ul className="mt-1 overflow-hidden rounded-box border border-base-300 bg-base-100">
@@ -67,54 +75,48 @@ export function ArchivedRepos({ repos }: { repos: ArchivedRepo[] }) {
                 {repo.archivedAt
                   ? ` · ${t("archive.archivedAt", { time: formatRelative(repo.archivedAt, locale) })}`
                   : ""}
+                {repo.daysLeft !== null ? (
+                  <span className={repo.daysLeft <= 3 ? "text-warning" : undefined}>
+                    {" · "}
+                    {repo.daysLeft === 0
+                      ? t("archive.expiresToday")
+                      : t("archive.expiresIn", { days: repo.daysLeft })}
+                  </span>
+                ) : null}
               </p>
             </div>
 
-            {confirmId === repo.repoId ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[11.5px] text-error">
-                  {t("archive.deleteWarning", { count: repo.notes + repo.todos })}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-error btn-xs"
-                  disabled={pending}
-                  onClick={() => run(() => deleteArchivedRepo(repo.repoId))}
-                >
-                  {t("common.confirmDelete")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs font-normal"
-                  onClick={() => setConfirmId(null)}
-                >
-                  {t("common.cancel")}
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs font-normal text-base-content/60"
-                  disabled={pending}
-                  onClick={() => run(() => restoreArchivedRepo(repo.repoId))}
-                >
-                  <RotateCcw className="size-3.5" aria-hidden="true" />
-                  {t("archive.restore")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-xs btn-square text-base-content/40 hover:text-error"
-                  onClick={() => setConfirmId(repo.repoId)}
-                  aria-label={t("archive.deleteAria", { repo: repo.fullName })}
-                >
-                  <Trash2 className="size-3.5" aria-hidden="true" />
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs font-normal text-base-content/60"
+                disabled={pending}
+                onClick={() => run(() => restoreArchivedRepo(repo.repoId))}
+              >
+                <RotateCcw className="size-3.5" aria-hidden="true" />
+                {t("archive.restore")}
+              </button>
+
+              {/* Etiketli: yalnizca ikon birakildiginda kullanici silmeyi bulamiyordu. */}
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs font-normal text-base-content/60 hover:text-error"
+                onClick={() => setDeleting(repo)}
+                aria-label={t("archive.deleteAria", { repo: repo.fullName })}
+              >
+                <Trash2 className="size-3.5" aria-hidden="true" />
+                {t("common.delete")}
+              </button>
+            </div>
           </li>
         ))}
       </ul>
+
+      <DeleteRepoDialog
+        key={deleting?.repoId ?? "closed"}
+        repo={deleting}
+        onClose={() => setDeleting(null)}
+      />
     </section>
   );
 }

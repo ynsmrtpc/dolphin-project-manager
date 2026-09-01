@@ -4,10 +4,13 @@ import { AlertTriangle } from "lucide-react";
 
 import { Reveal } from "@/components/motion/Reveal";
 import { ArchivedRepos, type ArchivedRepo } from "@/components/repos/ArchivedRepos";
+import { MissingRepos, type MissingRepo } from "@/components/repos/MissingRepos";
 import { RepoPicker, type RepoMeta } from "@/components/repos/RepoPicker";
 import { PageHeader } from "@/components/ui/PageHeader";
 import type { SelectableRepo } from "@/lib/actions";
+import { daysUntilPurge, purgeExpiredArchives } from "@/lib/archive";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { fetchAllRepos, githubErrorMessage } from "@/lib/github";
 import { getT } from "@/lib/i18n/server";
 import { requireUser } from "@/lib/session";
@@ -25,6 +28,7 @@ type StoredRepo = {
   name: string;
   is_archived: number;
   archived_at: string | null;
+  missing_since: string | null;
   notes: number;
   todos: number;
 };
@@ -33,9 +37,13 @@ export default async function ReposPage() {
   const user = await requireUser();
   const t = await getT();
 
+  // Saklama suresi dolan arsiv kayitlarini once temizle.
+  purgeExpiredArchives(user.id);
+
   const stored = db
     .prepare(
       `SELECT r.id, r.github_repo_id, r.full_name, r.name, r.is_archived, r.archived_at,
+              r.missing_since,
               (SELECT COUNT(*) FROM notes n WHERE n.repo_id = r.id) AS notes,
               (SELECT COUNT(*) FROM todos t WHERE t.repo_id = r.id) AS todos
          FROM repos r
@@ -43,8 +51,10 @@ export default async function ReposPage() {
     )
     .all(user.id) as StoredRepo[];
 
+  // Kayip depolar GitHub listesinde olmadigi icin seciciye girmez;
+  // kendi bolumunden yonetilirler.
   const selectedIds = stored
-    .filter((row) => !row.is_archived)
+    .filter((row) => !row.is_archived && !row.missing_since)
     .map((row) => row.github_repo_id);
 
   const meta: RepoMeta[] = stored.map((row) => ({
@@ -55,6 +65,17 @@ export default async function ReposPage() {
     archived: Boolean(row.is_archived),
   }));
 
+  const missing: MissingRepo[] = stored
+    .filter((row) => row.missing_since && !row.is_archived)
+    .map((row) => ({
+      repoId: row.id,
+      name: row.name,
+      fullName: row.full_name,
+      notes: row.notes,
+      todos: row.todos,
+      missingSince: row.missing_since,
+    }));
+
   const archived: ArchivedRepo[] = stored
     .filter((row) => row.is_archived)
     .map((row) => ({
@@ -64,6 +85,7 @@ export default async function ReposPage() {
       notes: row.notes,
       todos: row.todos,
       archivedAt: row.archived_at,
+      daysLeft: daysUntilPurge(row.archived_at),
     }));
 
   let repos: SelectableRepo[] = [];
@@ -108,7 +130,8 @@ export default async function ReposPage() {
         <RepoPicker repos={repos} initialSelectedIds={selectedIds} meta={meta} />
       )}
 
-      {archived.length > 0 ? <ArchivedRepos repos={archived} /> : null}
+      {missing.length > 0 ? <MissingRepos repos={missing} /> : null}
+      {archived.length > 0 ? <ArchivedRepos repos={archived} retentionDays={env.archiveRetentionDays} /> : null}
     </Reveal>
   );
 }

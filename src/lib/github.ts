@@ -164,6 +164,13 @@ async function ghFetch<T>(
   return (await res.json()) as T;
 }
 
+/**
+ * Sayfa basina 100 kayit, en fazla 15 sayfa.
+ * Bu sinira dayanan bir liste "eksik" olabilir; cagiran taraf buna gore
+ * davranmali (ornegin eksik depolari silinmis saymamali).
+ */
+export const MAX_FETCHED_REPOS = 1500;
+
 /** Kullanicinin erisebildigi tum public + private repolari getirir. */
 export async function fetchAllRepos(token: string): Promise<GithubRepo[]> {
   const all: GithubRepo[] = [];

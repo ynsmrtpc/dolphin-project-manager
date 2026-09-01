@@ -10,7 +10,7 @@ her proje için **not** al, **todo** yaz ve **commit geçmişini** incele.
 - **Inter** (next/font ile yerel barındırma) + **Lucide** ikonları
 - **PWA** — manifest, maskable ikonlar, service worker ve çevrimdışı sayfası
 - **İki dil** — Türkçe ve İngilizce, çerez tabanlı (URL'de dil öneki yok)
-- **Vitest** — 144 test; sunucu action'ları, veritabanı ve GitHub katmanı dahil (%86 satır kapsamı)
+- **Vitest** — 170 test; sunucu action'ları, veritabanı ve GitHub katmanı dahil
 - Port ve tüm ayarlar `.env` dosyasından
 
 ## Kurulum
@@ -52,6 +52,9 @@ DATABASE_PATH=./data/dolphin.db
   Sekme açıldığında önbellek bundan eskiyse GitHub'dan tazelenir; zamanlanmış iş yoktur.
 - `REPO_SYNC_TTL_MINUTES` — depo meta verisi (yıldız, açıklama, son push) için tazelik
   süresi (varsayılan 720 = 12 saat). Tek istekle tüm depolar güncellenir.
+- `ARCHIVE_RETENTION_DAYS` — arşivdeki depo bu kadar gün sonra notları ve görevleriyle
+  birlikte kalıcı olarak silinir (varsayılan 30). `0` yazılırsa otomatik silme kapanır.
+  Temizlik zamanlanmış bir işle değil, sayfa açılışlarında yapılır.
 - `ENCRYPTION_KEY` — GitHub access token'ları bu anahtarla (AES-256-GCM) şifrelenir.
   Boş bırakılırsa `data/.encryption-key` dosyası üretilir. Anahtarı veritabanından
   ayrı tutmak daha güvenlidir; anahtar değişirse kullanıcıların yeniden giriş yapması gerekir.
@@ -135,7 +138,7 @@ sahip olmak zorunda, ayrıca bir test iki sözlüğün eşitliğini doğrular.
 
 ## Testler
 
-`npm test` 144 testi çalıştırır. Suit iki katmandan oluşur:
+`npm test` 170 testi çalıştırır. Suit iki katmandan oluşur:
 
 **Saf mantık** — markdown ayrıştırma, tarih biçimlendirme (SQLite'ın Z taşımayan eski
 damgaları dahil), token şifreleme, çeviri ve GitHub hata sınıflandırması.
@@ -156,7 +159,7 @@ mantığıdır, arayüz bileşenleri bu suitin kapsamında değildir.
 | --- | --- |
 | `users` | GitHub profili + access token |
 | `sessions` | Çerezdeki oturum anahtarı (30 gün) |
-| `repos` | Kullanıcının anasayfada görmeyi seçtiği repolar |
+| `repos` | Kullanıcının panoda görmeyi seçtiği depolar (`is_archived`, `missing_since`) |
 | `notes` | Repo bazlı notlar |
 | `todos` | Repo bazlı görevler (issue açıldıysa `issue_number` / `issue_url`) |
 | `issues` | GitHub issue/PR önbelleği (`repos.issues_synced_at` tazelik damgası) |
@@ -167,6 +170,22 @@ alanını tutar; şema ilk açılışta otomatik güncellenir.
 Notlar ve görevler depoya `ON DELETE CASCADE` ile bağlıdır, ama depo seçimden
 çıkarıldığında **silinmez** — `is_archived` işaretlenir. Gerçek silme yalnızca arşiv
 bölümündeki açık onayla olur.
+
+Bir depo GitHub listesinden düşerse (silinmiş, devredilmiş ya da erişim kalkmış olabilir)
+depo tazelemesi onu `missing_since` ile işaretler; yine silmez. Panoda uyarı rozeti
+çıkar, **Repo seçimi** sayfasındaki *GitHub'da bulunamadı* bölümünden arşive alınabilir
+veya kalıcı silinebilir. Kayıp depolar kendiliğinden silinmez — geri gelebilirler.
+
+Arşive alınan depolar ise `ARCHIVE_RETENTION_DAYS` gün sonra kalıcı olarak silinir.
+Kalan süre arşiv listesinde her satırda yazar; geri getirilen deponun sayacı sıfırlanır.
+
+**Arşivleme ve silme** üç yerden yapılabilir: proje detayındaki **⋯** menüsü, *Repo seçimi*
+sayfasındaki arşiv ve *GitHub'da bulunamadı* bölümleri. Kalıcı silme her yerde aynı
+diyaloğu açar: işlemin geri alınamayacağını, kaç not/görev gideceğini ve GitHub'daki
+deponun silinmeyeceğini söyler, ardından onay için deponun tam adının
+(`owner/repo`) yazılmasını ister. Bu eşleşme sunucuda da kontrol edilir — yanlış
+bağlanmış bir arayüz silme yapamaz. Uzak liste boş dönerse ya da sayfa üst sınırına dayanırsa
+hiçbir şey işaretlenmez — geçici bir API hatası tüm depoları "silinmiş" göstermesin diye.
 
 Zaman damgaları her yerde ISO-8601/UTC yazılır (`lib/time.ts`); eski `datetime('now')`
 biçimindeki satırlar okunurken de doğru yorumlanır.

@@ -56,7 +56,7 @@ export async function planRepoRemoval(keepGithubIds: number[]) {
               (SELECT COUNT(*) FROM notes n WHERE n.repo_id = r.id) AS notes,
               (SELECT COUNT(*) FROM todos t WHERE t.repo_id = r.id) AS todos
          FROM repos r
-        WHERE r.user_id = ? AND r.is_archived = 0`,
+        WHERE r.user_id = ? AND r.is_archived = 0 AND r.missing_since IS NULL`,
     )
     .all(user.id) as {
     id: number;
@@ -162,19 +162,56 @@ export async function restoreArchivedRepo(repoId: number) {
   revalidatePath("/repos");
 }
 
-/** Arsivdeki depoyu notlari ve gorevleriyle birlikte kalici olarak siler. */
-export async function deleteArchivedRepo(repoId: number) {
+/** Depoyu panodan cikarir ama verisini saklar. Geri alinabilir. */
+export async function archiveRepo(repoId: number) {
   const user = await requireUser();
+  const t = await getT();
 
-  db.prepare(`DELETE FROM repos WHERE id = ? AND user_id = ? AND is_archived = 1`).run(
-    repoId,
-    user.id,
-  );
+  const repo = db
+    .prepare(`SELECT full_name FROM repos WHERE id = ? AND user_id = ?`)
+    .get(repoId, user.id) as { full_name: string } | undefined;
+
+  if (!repo) return { ok: false as const, message: t("errors.repoNotFound") };
+
+  db.prepare(
+    `UPDATE repos SET is_archived = 1, archived_at = ? WHERE id = ? AND user_id = ?`,
+  ).run(nowIso(), repoId, user.id);
 
   revalidatePath("/");
   revalidatePath("/repos");
+
+  return { ok: true as const, message: t("archive.archived", { repo: repo.full_name }) };
 }
 
+/**
+ * Depoyu notlari ve gorevleriyle birlikte kalici olarak siler.
+ *
+ * Geri alinamaz oldugu icin cagiranin deponun tam adini yazmasi gerekiyor;
+ * bu kontrol sunucuda yapiliyor, yanlis baglanmis bir arayuz silemesin diye.
+ */
+export async function deleteRepo(repoId: number, confirmation: string) {
+  const user = await requireUser();
+  const t = await getT();
+
+  const repo = db
+    .prepare(`SELECT full_name FROM repos WHERE id = ? AND user_id = ?`)
+    .get(repoId, user.id) as { full_name: string } | undefined;
+
+  if (!repo) return { ok: false as const, message: t("errors.repoNotFound") };
+
+  if (confirmation.trim() !== repo.full_name) {
+    return { ok: false as const, message: t("deleteRepo.mismatch") };
+  }
+
+  db.prepare(`DELETE FROM repos WHERE id = ? AND user_id = ?`).run(repoId, user.id);
+
+  revalidatePath("/");
+  revalidatePath("/repos");
+
+  return { ok: true as const, message: t("deleteRepo.deleted", { repo: repo.full_name }) };
+}
+
+/** Depo bu kullaniciya ait degilse islem yapilmaz. */
 async function ownedRepo(repoId: number): Promise<RepoRow> {
   const user = await requireUser();
   const repo = db
@@ -186,6 +223,23 @@ async function ownedRepo(repoId: number): Promise<RepoRow> {
     throw new Error(t("errors.repoNotFound"));
   }
   return repo;
+}
+
+/** Panodaki depo bilgilerini (yildiz, aciklama, son push) GitHub'dan tazeler. */
+export async function refreshRepoMeta() {
+  const user = await requireUser();
+  const t = await getT();
+
+  try {
+    const { updated } = await syncRepoMeta(user);
+    revalidatePath("/");
+    return { ok: true as const, message: t("errors.repoSynced", { count: updated }) };
+  } catch (error) {
+    return {
+      ok: false as const,
+      message: githubErrorMessage(t, error, t("errors.repoSyncError")),
+    };
+  }
 }
 
 /* -------------------------------- Özet --------------------------------- */
@@ -207,8 +261,8 @@ export async function updateSummary(repoId: number, summary: string) {
 export async function importReadmeSummary(repoId: number) {
   const user = await requireUser();
   const repo = await ownedRepo(repoId);
-
   const t = await getT();
+
   const readme = await fetchReadme(user.access_token, repo.full_name);
   if (readme === null || !readme.trim()) {
     return { ok: false as const, message: t("errors.readmeNotFound") };
@@ -251,10 +305,7 @@ export async function previewTodoImport(repoId: number) {
   }
 
   if (!file) {
-    return {
-      ok: false as const,
-      message: t("todoImport.notFound"),
-    };
+    return { ok: false as const, message: t("todoImport.notFound") };
   }
 
   const parsed = parseTodoMarkdown(file.content);
@@ -335,23 +386,6 @@ export async function undoTodoImport(repoId: number, batch: string) {
   revalidatePath("/");
 
   return { ok: true as const, removed: result.changes };
-}
-
-/** Panodaki depo bilgilerini (yildiz, aciklama, son push) GitHub'dan tazeler. */
-export async function refreshRepoMeta() {
-  const user = await requireUser();
-  const t = await getT();
-
-  try {
-    const updated = await syncRepoMeta(user);
-    revalidatePath("/");
-    return { ok: true as const, message: t("errors.repoSynced", { count: updated }) };
-  } catch (error) {
-    return {
-      ok: false as const,
-      message: githubErrorMessage(t, error, t("errors.repoSyncError")),
-    };
-  }
 }
 
 /* --------------------------- Issue / PR senkronu ------------------------ */

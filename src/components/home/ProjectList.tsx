@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronRight, Lock, Search, Star } from "lucide-react";
+import { AlertTriangle, ChevronRight, Lock, Search, Star } from "lucide-react";
 
 import { fadeUp, reducedFade, staggerContainer } from "@/components/motion/motion-presets";
 import { formatRelative } from "@/lib/format";
@@ -21,6 +21,7 @@ export type ProjectRow = {
   language: string | null;
   stars: number;
   pushed_at: string | null;
+  missing_since: string | null;
   note_count: number;
   open_todos: number;
   done_todos: number;
@@ -119,6 +120,16 @@ export function ProjectList({ projects }: { projects: ProjectRow[] }) {
                           className="size-3 shrink-0 text-base-content/35"
                           aria-label={t("common.privateRepo")}
                         />
+                      ) : null}
+
+                      {project.missing_since ? (
+                        <span
+                          className="flex shrink-0 items-center gap-1 rounded-selector bg-warning/15 px-1.5 py-0.5 text-[10.5px] text-warning"
+                          title={t("missing.badgeTitle")}
+                        >
+                          <AlertTriangle className="size-2.5" aria-hidden="true" />
+                          {t("missing.badge")}
+                        </span>
                       ) : null}
                     </div>
 

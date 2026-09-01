@@ -6,6 +6,7 @@ import { ProjectList, type ProjectRow } from "@/components/home/ProjectList";
 import { RefreshRepos } from "@/components/home/RefreshRepos";
 import { Reveal } from "@/components/motion/Reveal";
 import { MetaStrip, PageHeader } from "@/components/ui/PageHeader";
+import { purgeExpiredArchives } from "@/lib/archive";
 import { db } from "@/lib/db";
 import { isRepoMetaStale, repoMetaSyncedAt, syncRepoMeta } from "@/lib/repos";
 import { getT } from "@/lib/i18n/server";
@@ -21,6 +22,8 @@ export default async function HomePage() {
   const user = await requireUser();
   const t = await getT();
 
+  purgeExpiredArchives(user.id);
+
   // Yildiz/aciklama/son push bilgisi bayatladiysa tek istekle hepsini tazele.
   let syncedAt = repoMetaSyncedAt(user.id);
   if (isRepoMetaStale(syncedAt)) {
@@ -35,7 +38,7 @@ export default async function HomePage() {
   const projects = db
     .prepare(
       `SELECT r.id, r.full_name, r.name, r.owner, r.description, r.is_private,
-              r.html_url, r.language, r.stars, r.pushed_at,
+              r.html_url, r.language, r.stars, r.pushed_at, r.missing_since,
               (SELECT COUNT(*) FROM notes n WHERE n.repo_id = r.id) AS note_count,
               (SELECT COUNT(*) FROM todos t WHERE t.repo_id = r.id AND t.done = 0) AS open_todos,
               (SELECT COUNT(*) FROM todos t WHERE t.repo_id = r.id AND t.done = 1) AS done_todos

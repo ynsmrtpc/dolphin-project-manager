@@ -117,6 +117,7 @@ function migrate(db: Database.Database) {
   addColumn(db, "repos", "summary_updated_at", "TEXT");
   addColumn(db, "repos", "issues_synced_at", "TEXT");
   addColumn(db, "repos", "is_archived", "INTEGER NOT NULL DEFAULT 0");
+  addColumn(db, "repos", "missing_since", "TEXT");
   addColumn(db, "repos", "archived_at", "TEXT");
 
   // Bir gorevden acilan GitHub issue'sunun izi.
@@ -191,6 +192,8 @@ export type RepoRow = {
   issues_synced_at: string | null;
   is_archived: number;
   archived_at: string | null;
+  /** GitHub listesinde artik gorunmuyorsa ilk fark edildigi an. */
+  missing_since: string | null;
 };
 
 export type NoteRow = {

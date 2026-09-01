@@ -30,6 +30,13 @@ function remoteRepo(id: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
+const missingSince = (repoId: number) =>
+  (
+    db.prepare(`SELECT missing_since FROM repos WHERE id = ?`).get(repoId) as {
+      missing_since: string | null;
+    }
+  ).missing_since;
+
 let user: UserRow;
 
 beforeEach(() => {
@@ -59,11 +66,13 @@ describe("syncRepoMeta", () => {
     const repo = seedRepo(db, user.id, { githubRepoId: 10, name: "eski-ad" });
     gh.repos = [remoteRepo(10, { name: "yeni-ad" })];
 
-    const updated = await syncRepoMeta(user);
+    const { updated } = await syncRepoMeta(user);
 
     expect(updated).toBe(1);
     const row = db
-      .prepare(`SELECT name, description, stars, language, pushed_at FROM repos WHERE id = ?`)
+      .prepare(
+        `SELECT name, description, stars, language, pushed_at FROM repos WHERE id = ?`,
+      )
       .get(repo.id) as {
       name: string;
       description: string;
@@ -92,7 +101,7 @@ describe("syncRepoMeta", () => {
     seedRepo(db, user.id, { githubRepoId: 10 });
     gh.repos = [remoteRepo(10), remoteRepo(11), remoteRepo(12)];
 
-    const updated = await syncRepoMeta(user);
+    const { updated } = await syncRepoMeta(user);
 
     expect(updated).toBe(1);
     expect(count(db, "repos")).toBe(1);
@@ -125,5 +134,81 @@ describe("syncRepoMeta", () => {
     expect(row.name).toBe("yeni-ad");
     // Tazeleme arsiv durumunu bozmamali.
     expect(row.is_archived).toBe(1);
+  });
+});
+
+describe("GitHub'da bulunamayan depolar", () => {
+  it("uzak listede olmayanı kayıp işaretler, silmez", async () => {
+    const gone = seedRepo(db, user.id, { githubRepoId: 10 });
+    seedRepo(db, user.id, { githubRepoId: 11 });
+    // 10 numarali depo GitHub'dan silinmis; uzak liste yalnizca 11'i doner.
+    gh.repos = [remoteRepo(11)];
+
+    const result = await syncRepoMeta(user);
+
+    expect(result.missing).toBe(1);
+    // Asil mesele: kayit ve verisi duruyor mu?
+    expect(count(db, "repos")).toBe(2);
+    expect(missingSince(gone.id)).toMatch(/Z$/);
+  });
+
+  it("ilk fark edilme anını sonraki senkronlarda değiştirmez", async () => {
+    const gone = seedRepo(db, user.id, { githubRepoId: 10 });
+    seedRepo(db, user.id, { githubRepoId: 11 });
+    gh.repos = [remoteRepo(11)];
+
+    await syncRepoMeta(user);
+    const first = missingSince(gone.id);
+
+    const second = await syncRepoMeta(user);
+
+    expect(second.missing).toBe(0);
+    expect(missingSince(gone.id)).toBe(first);
+  });
+
+  it("depo geri gelirse işareti kaldırır", async () => {
+    const gone = seedRepo(db, user.id, { githubRepoId: 10 });
+    seedRepo(db, user.id, { githubRepoId: 11 });
+
+    gh.repos = [remoteRepo(11)];
+    await syncRepoMeta(user);
+    expect(missingSince(gone.id)).not.toBeNull();
+
+    gh.repos = [remoteRepo(10), remoteRepo(11)];
+    await syncRepoMeta(user);
+
+    expect(missingSince(gone.id)).toBeNull();
+  });
+
+  /** Gecici bir API hatasi tum depolari "silinmis" gostermemeli. */
+  it("uzak liste boş dönerse hiçbir şeyi işaretlemez", async () => {
+    seedRepo(db, user.id, { githubRepoId: 10 });
+    gh.repos = [];
+
+    const result = await syncRepoMeta(user);
+
+    expect(result.missing).toBe(0);
+    expect(count(db, "repos", "missing_since IS NOT NULL")).toBe(0);
+  });
+
+  it("başka kullanıcının deposunu işaretlemez", async () => {
+    const other = seedUser(db, { login: "diger", githubId: 2 }) as UserRow;
+    const foreign = seedRepo(db, other.id, { githubRepoId: 50 });
+    seedRepo(db, user.id, { githubRepoId: 10 });
+    gh.repos = [remoteRepo(10)];
+
+    await syncRepoMeta(user);
+
+    expect(missingSince(foreign.id)).toBeNull();
+  });
+
+  it("arşivdeki depoyu da işaretler", async () => {
+    const archived = seedRepo(db, user.id, { githubRepoId: 10, archived: true });
+    seedRepo(db, user.id, { githubRepoId: 11 });
+    gh.repos = [remoteRepo(11)];
+
+    await syncRepoMeta(user);
+
+    expect(missingSince(archived.id)).not.toBeNull();
   });
 });

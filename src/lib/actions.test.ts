@@ -199,7 +199,19 @@ describe("planRepoRemoval", () => {
   });
 });
 
-describe("arşiv işlemleri", () => {
+describe("arşivleme", () => {
+  it("depoyu panodan çıkarır ama verisini saklar", async () => {
+    await actions.saveSelectedRepos([selectable(10)]);
+    const repo = repoRow(10)!;
+    seedNote(db, repo.id);
+
+    const result = await actions.archiveRepo(repo.id);
+
+    expect(result.ok).toBe(true);
+    expect(repoRow(10)?.is_archived).toBe(1);
+    expect(count(db, "notes")).toBe(1);
+  });
+
   it("geri getirince depo panoya döner", async () => {
     const repo = seedRepo(db, owner.id, { githubRepoId: 20, archived: true });
     await actions.restoreArchivedRepo(repo.id);
@@ -207,29 +219,72 @@ describe("arşiv işlemleri", () => {
     expect(repoRow(20)?.is_archived).toBe(0);
   });
 
-  it("kalıcı silme veriyi de götürür", async () => {
-    const repo = seedRepo(db, owner.id, { githubRepoId: 20, archived: true });
+  it("başkasının deposunu arşivleyemez", async () => {
+    const foreign = seedRepo(db, other.id, { githubRepoId: 99 });
+
+    const result = await actions.archiveRepo(foreign.id);
+
+    expect(result.ok).toBe(false);
+    expect(count(db, "repos", `id = ${foreign.id} AND is_archived = 0`)).toBe(1);
+  });
+});
+
+describe("kalıcı silme", () => {
+  it("depo adı tam yazıldığında siler", async () => {
+    await actions.saveSelectedRepos([selectable(10, "silinecek")]);
+    const repo = repoRow(10)!;
     seedNote(db, repo.id);
     seedTodo(db, repo.id);
 
-    await actions.deleteArchivedRepo(repo.id);
+    const result = await actions.deleteRepo(repo.id, "tester/silinecek");
 
-    expect(repoRow(20)).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(repoRow(10)).toBeUndefined();
     expect(count(db, "notes")).toBe(0);
     expect(count(db, "todos")).toBe(0);
   });
 
-  it("arşivde olmayan depoyu kalıcı silmez", async () => {
-    const repo = seedRepo(db, owner.id, { githubRepoId: 20 });
-    await actions.deleteArchivedRepo(repo.id);
+  /** Onay kontrolu sunucuda: yanlis baglanmis bir arayuz silemesin. */
+  it("ad eşleşmezse silmez", async () => {
+    await actions.saveSelectedRepos([selectable(10, "silinecek")]);
+    const repo = repoRow(10)!;
 
-    expect(count(db, "repos", `id = ${repo.id}`)).toBe(1);
+    const result = await actions.deleteRepo(repo.id, "tester/yanlis-ad");
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe("deleteRepo.mismatch");
+    expect(repoRow(10)).toBeDefined();
   });
 
-  it("başkasının arşivini silemez", async () => {
-    const foreign = seedRepo(db, other.id, { githubRepoId: 99, archived: true });
-    await actions.deleteArchivedRepo(foreign.id);
+  it("boş onayla silmez", async () => {
+    await actions.saveSelectedRepos([selectable(10, "silinecek")]);
+    const repo = repoRow(10)!;
 
+    expect((await actions.deleteRepo(repo.id, "")).ok).toBe(false);
+    expect(repoRow(10)).toBeDefined();
+  });
+
+  it("baştaki ve sondaki boşlukları yok sayar", async () => {
+    await actions.saveSelectedRepos([selectable(10, "silinecek")]);
+    const repo = repoRow(10)!;
+
+    const result = await actions.deleteRepo(repo.id, "  tester/silinecek  ");
+
+    expect(result.ok).toBe(true);
+    expect(repoRow(10)).toBeUndefined();
+  });
+
+  it("başkasının deposunu doğru adla bile silemez", async () => {
+    const foreign = seedRepo(db, other.id, {
+      githubRepoId: 99,
+      fullName: "other/gizli",
+      name: "gizli",
+    });
+
+    const result = await actions.deleteRepo(foreign.id, "other/gizli");
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toBe("errors.repoNotFound");
     expect(count(db, "repos", `id = ${foreign.id}`)).toBe(1);
   });
 });
@@ -566,5 +621,61 @@ describe("görevden issue açma", () => {
 
     expect(result.ok).toBe(false);
     expect(result.message).toBe("errors.rateLimited");
+  });
+});
+
+/* ------------------- GitHub'da bulunamayan depolar ----------------------- */
+
+describe("kayıp depolar", () => {
+  const markMissing = (repoId: number) =>
+    db
+      .prepare(`UPDATE repos SET missing_since = ? WHERE id = ?`)
+      .run(new Date().toISOString(), repoId);
+
+  it("seçim kaydedilirken sessizce silinmez", async () => {
+    await actions.saveSelectedRepos([selectable(10), selectable(11)]);
+    const gone = repoRow(10)!;
+    markMissing(gone.id);
+
+    // Kullanici yalnizca 11'i seciyor; 10 zaten GitHub listesinde olmadigi
+    // icin seciciye hic girmemisti.
+    await actions.saveSelectedRepos([selectable(11)]);
+
+    expect(repoRow(10)).toBeDefined();
+    expect(repoRow(10)?.is_archived).toBe(0);
+  });
+
+  it("kaldırma planına alınmaz", async () => {
+    await actions.saveSelectedRepos([selectable(10)]);
+    markMissing(repoRow(10)!.id);
+
+    expect(await actions.planRepoRemoval([])).toEqual([]);
+  });
+
+  it("arşive alınabilir, verisi durur", async () => {
+    await actions.saveSelectedRepos([selectable(10)]);
+    const repo = repoRow(10)!;
+    seedNote(db, repo.id);
+    markMissing(repo.id);
+
+    await actions.archiveRepo(repo.id);
+
+    expect(repoRow(10)?.is_archived).toBe(1);
+    expect(count(db, "notes")).toBe(1);
+  });
+
+  it("adı yazılarak kalıcı silinebilir", async () => {
+    await actions.saveSelectedRepos([selectable(10, "kayip")]);
+    const repo = repoRow(10)!;
+    seedNote(db, repo.id);
+    seedTodo(db, repo.id);
+    markMissing(repo.id);
+
+    const result = await actions.deleteRepo(repo.id, "tester/kayip");
+
+    expect(result.ok).toBe(true);
+    expect(repoRow(10)).toBeUndefined();
+    expect(count(db, "notes")).toBe(0);
+    expect(count(db, "todos")).toBe(0);
   });
 });

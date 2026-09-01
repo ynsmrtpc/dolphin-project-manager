@@ -135,6 +135,33 @@ export const tr = {
     confirmAccept: "Onaylıyorum, kaydet",
   },
 
+  deleteRepo: {
+    title: "Depoyu sil",
+    irreversible: "Bu işlem geri alınamaz.",
+    whatGoes: "{notes} not ve {todos} görev kalıcı olarak silinecek.",
+    githubSafe:
+      "GitHub'daki depo silinmez — yalnızca Dolphin'deki kayıt, notlar ve görevler silinir.",
+    confirmLabel: "Onaylamak için depo adını tam olarak yaz:",
+    inputAria: "Onay için depo adı",
+    mismatch: "Yazdığın ad eşleşmiyor.",
+    submit: "Bu depoyu kalıcı olarak sil",
+    deleted: "{repo} silindi.",
+  },
+
+  missing: {
+    title: "GitHub'da bulunamadı · {count}",
+    description:
+      "Bu depolar GitHub listende artık görünmüyor — silinmiş, devredilmiş ya da erişimin kalkmış olabilir. Notların ve görevlerin duruyor; ne yapılacağına sen karar ver.",
+    since: "{time} beri bulunamıyor",
+    counts: "{notes} not · {todos} görev",
+    archive: "Arşive al",
+    archiveTitle: "Panodan çıkar, notları ve görevleri sakla",
+    deleteAria: "{repo} kaydını notlarıyla birlikte kalıcı sil",
+    deleteWarning: "{count} kayıt kalıcı olarak silinecek",
+    badge: "GitHub'da yok",
+    badgeTitle: "Bu depo GitHub listende görünmüyor. Repo seçimi sayfasından yönetebilirsin.",
+  },
+
   archive: {
     title: "Arşiv · {count}",
     description:
@@ -142,11 +169,20 @@ export const tr = {
     counts: "{notes} not · {todos} görev",
     archivedAt: "{time} arşivlendi",
     restore: "Geri getir",
+    archived: "{repo} arşivlendi.",
     deleteAria: "{repo} arşiv kaydını kalıcı sil",
     deleteWarning: "{count} kayıt kalıcı olarak silinecek",
+    retention: "Arşivdeki depolar {days} gün sonra notları ve görevleriyle birlikte kalıcı olarak silinir.",
+    retentionOff: "Arşivdekiler kendiliğinden silinmez.",
+    expiresIn: "{days} gün sonra silinecek",
+    expiresToday: "bugün silinecek",
   },
 
   project: {
+    actionsAria: "Diğer işlemler",
+    archive: "Arşive al",
+    archiveHint: "Panodan çıkar, notlar ve görevler kalsın",
+    delete: "Depoyu sil",
     breadcrumb: "Projeler",
     fallbackTitle: "Proje",
     noDescription: "Bu depo için açıklama yok.",

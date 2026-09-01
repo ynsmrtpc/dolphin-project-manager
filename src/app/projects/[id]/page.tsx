@@ -17,6 +17,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { HistorySection } from "@/components/project/HistorySection";
 import { IssuesSection } from "@/components/project/IssuesSection";
 import { NotesPanel } from "@/components/project/NotesPanel";
+import { ProjectActions } from "@/components/project/ProjectActions";
 import { SectionSkeleton } from "@/components/project/SectionSkeleton";
 import { SummaryPanel } from "@/components/project/SummaryPanel";
 import { TodosPanel } from "@/components/project/TodosPanel";
@@ -97,6 +98,7 @@ export default async function ProjectPage({
   const issueState: "open" | "closed" = query.state === "closed" ? "closed" : "open";
 
   const openTodos = todos.filter((todo) => !todo.done).length;
+  const noteCount = notes.length;
 
   function tabHref(next: Tab) {
     const search = new URLSearchParams({ tab: next });
@@ -158,15 +160,26 @@ export default async function ProjectPage({
             </div>
           </div>
 
-          <a
-            href={repo.html_url}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-sm font-normal"
-          >
-            {t("common.github")}
-            <ArrowUpRight className="size-3.5" strokeWidth={2} aria-hidden="true" />
-          </a>
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href={repo.html_url}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-sm font-normal"
+            >
+              {t("common.github")}
+              <ArrowUpRight className="size-3.5" strokeWidth={2} aria-hidden="true" />
+            </a>
+
+            <ProjectActions
+              repo={{
+                repoId,
+                fullName: repo.full_name,
+                notes: noteCount,
+                todos: todos.length,
+              }}
+            />
+          </div>
         </div>
       </div>
 

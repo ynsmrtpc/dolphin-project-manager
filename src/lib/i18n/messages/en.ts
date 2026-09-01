@@ -146,6 +146,33 @@ export const en: Messages = {
     confirmAccept: "Confirm and save",
   },
 
+  deleteRepo: {
+    title: "Delete repository",
+    irreversible: "This action cannot be undone.",
+    whatGoes: "{notes} notes and {todos} tasks will be permanently deleted.",
+    githubSafe:
+      "The repository on GitHub is not touched — only the record, notes and tasks in Dolphin are deleted.",
+    confirmLabel: "Type the repository name exactly to confirm:",
+    inputAria: "Repository name for confirmation",
+    mismatch: "The name you typed does not match.",
+    submit: "Permanently delete this repository",
+    deleted: "{repo} deleted.",
+  },
+
+  missing: {
+    title: "Not found on GitHub · {count}",
+    description:
+      "These repositories no longer appear in your GitHub list — they may have been deleted, transferred, or your access was removed. Your notes and tasks are intact; you decide what happens next.",
+    since: "missing since {time}",
+    counts: "{notes} notes · {todos} tasks",
+    archive: "Move to archive",
+    archiveTitle: "Take it off the board but keep notes and tasks",
+    deleteAria: "Permanently delete {repo} along with its notes",
+    deleteWarning: "{count} records will be permanently deleted",
+    badge: "not on GitHub",
+    badgeTitle: "This repository is not in your GitHub list. Manage it from the repositories page.",
+  },
+
   archive: {
     title: "Archive · {count}",
     description:
@@ -153,11 +180,20 @@ export const en: Messages = {
     counts: "{notes} notes · {todos} tasks",
     archivedAt: "archived {time}",
     restore: "Restore",
+    archived: "{repo} archived.",
     deleteAria: "Permanently delete the archived record for {repo}",
     deleteWarning: "{count} records will be permanently deleted",
+    retention: "Archived repositories are permanently deleted with their notes and tasks after {days} days.",
+    retentionOff: "Archived repositories are never deleted automatically.",
+    expiresIn: "deleted in {days} days",
+    expiresToday: "deleted today",
   },
 
   project: {
+    actionsAria: "More actions",
+    archive: "Move to archive",
+    archiveHint: "Take it off the board, keep notes and tasks",
+    delete: "Delete repository",
     breadcrumb: "Projects",
     fallbackTitle: "Project",
     noDescription: "This repository has no description.",
