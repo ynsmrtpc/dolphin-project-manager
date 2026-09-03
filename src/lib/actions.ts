@@ -555,6 +555,21 @@ export async function createTodo(
   revalidatePath("/");
 }
 
+export async function updateTodoTitle(todoId: number, title: string) {
+  const user = await requireUser();
+  const cleanTitle = title.trim();
+  if (!cleanTitle) return;
+
+  db.prepare(
+    `UPDATE todos
+        SET title = ?
+      WHERE id = ?
+        AND repo_id IN (SELECT id FROM repos WHERE user_id = ?)`,
+  ).run(cleanTitle, todoId, user.id);
+
+  revalidatePath("/projects", "layout");
+}
+
 export async function toggleTodo(todoId: number) {
   const user = await requireUser();
 

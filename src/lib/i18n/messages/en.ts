@@ -265,6 +265,7 @@ export const en: Messages = {
     reopenAria: "Reopen {title}",
     selectAria: "Select {title}",
     deleteAria: "Delete {title}",
+    editAria: "Edit {title}",
     issueAria: "Open a GitHub issue from {title}",
     issueTitle: "Open an issue on GitHub",
     linkedIssue: "Issue opened from this task",

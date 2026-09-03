@@ -254,6 +254,7 @@ export const tr = {
     reopenAria: "{title} görevini yeniden aç",
     selectAria: "{title} görevini seç",
     deleteAria: "{title} görevini sil",
+    editAria: "{title} görevini düzenle",
     issueAria: "{title} görevinden GitHub issue aç",
     issueTitle: "GitHub'da issue aç",
     linkedIssue: "Bu görevden açılan issue",

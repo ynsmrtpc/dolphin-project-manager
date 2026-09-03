@@ -346,6 +346,33 @@ describe("görevler", () => {
     expect(count(db, "todos")).toBe(0);
   });
 
+  it("görev başlığını günceller", async () => {
+    const repo = seedRepo(db, owner.id);
+    const todoId = seedTodo(db, repo.id, { title: "eski" });
+
+    await actions.updateTodoTitle(todoId, "  yeni  ");
+
+    expect(count(db, "todos", `id = ${todoId} AND title = 'yeni'`)).toBe(1);
+  });
+
+  it("boş başlıkla güncellemez", async () => {
+    const repo = seedRepo(db, owner.id);
+    const todoId = seedTodo(db, repo.id, { title: "eski" });
+
+    await actions.updateTodoTitle(todoId, "   ");
+
+    expect(count(db, "todos", `id = ${todoId} AND title = 'eski'`)).toBe(1);
+  });
+
+  it("başkasının görevinin başlığını değiştiremez", async () => {
+    const foreign = seedRepo(db, other.id, { githubRepoId: 99 });
+    const todoId = seedTodo(db, foreign.id, { title: "dokunma" });
+
+    await actions.updateTodoTitle(todoId, "ele geçirildi");
+
+    expect(count(db, "todos", `id = ${todoId} AND title = 'dokunma'`)).toBe(1);
+  });
+
   it("tamamlandı işaretlerken zaman damgası yazar, geri alınca siler", async () => {
     const repo = seedRepo(db, owner.id);
     const todoId = seedTodo(db, repo.id);

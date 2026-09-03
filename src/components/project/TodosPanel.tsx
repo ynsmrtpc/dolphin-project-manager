@@ -7,6 +7,7 @@ import {
   CheckSquare,
   CircleDot,
   Download,
+  Pencil,
   Plus,
   RotateCcw,
   Trash2,
@@ -24,6 +25,7 @@ import {
   deleteTodo,
   toggleTodo,
   undoTodoImport,
+  updateTodoTitle,
 } from "@/lib/actions";
 import type { TodoRow } from "@/lib/db";
 import { formatRelative } from "@/lib/format";
@@ -73,6 +75,9 @@ export function TodosPanel({
 
   const [issueTodo, setIssueTodo] = useState<{ id: number; title: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState("");
 
   const [selectMode, setSelectMode] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(new Set());
@@ -175,7 +180,11 @@ text: t("todos.undone", { count: result.removed }),
             <button
               type="button"
               className="btn btn-ghost btn-xs font-normal text-base-content/60"
-              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              onClick={() => {
+                if (selectMode) return exitSelectMode();
+                setEditingId(null);
+                setSelectMode(true);
+              }}
             >
               <CheckSquare className="size-3.5" aria-hidden="true" />
               {selectMode ? t("todos.bulkEditDone") : t("todos.bulkEdit")}
@@ -343,45 +352,99 @@ setMessage({ ok: true, text: t("todos.bulkDeleted", { count: result.changed }) }
                   title={t(PRIORITY_LABEL_KEY[todo.priority])}
                   aria-label={t(PRIORITY_LABEL_KEY[todo.priority])}
                 />
-                <span className="min-w-0 flex-1 truncate text-[13.5px]">
-                  {todo.title}
-                </span>
-
-                {todo.issue_number && todo.issue_url ? (
-                  <a
-                    href={todo.issue_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="tabular shrink-0 rounded-selector border border-base-300 px-1.5 font-mono text-[11px] text-base-content/50 transition-colors hover:border-base-content/25 hover:text-base-content"
-                    title={t("todos.linkedIssue")}
+                {editingId === todo.id ? (
+                  <form
+                    className="flex min-w-0 flex-1 items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (!editTitle.trim()) return;
+                      run(async () => {
+                        await updateTodoTitle(todo.id, editTitle);
+                        setEditingId(null);
+                      });
+                    }}
                   >
-                    #{todo.issue_number}
-                  </a>
-                ) : selectMode ? null : (
-                  <button
-                    type="button"
-                    className="row-actions btn btn-ghost btn-xs btn-square text-base-content/40 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-success"
-                    onClick={() => setIssueTodo({ id: todo.id, title: todo.title })}
-                    aria-label={t("todos.issueAria", { title: todo.title })}
-                    title={t("todos.issueTitle")}
-                  >
-                    <CircleDot className="size-3.5" aria-hidden="true" />
-                  </button>
-                )}
+                    <input
+                      autoFocus
+                      className="input input-xs h-7 min-w-0 flex-1 text-[13.5px]"
+                      value={editTitle}
+                      onChange={(event) => setEditTitle(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setEditingId(null);
+                      }}
+                      aria-label={t("todos.newAria")}
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn-primary btn-xs h-7"
+                      disabled={pending || !editTitle.trim()}
+                    >
+                      {t("common.save")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-xs h-7 font-normal text-base-content/60"
+                      onClick={() => setEditingId(null)}
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="min-w-0 flex-1 truncate text-[13.5px]">
+                      {todo.title}
+                    </span>
 
-                <span className="hidden shrink-0 text-[11.5px] text-base-content/35 sm:inline">
-                  {formatRelative(todo.created_at, locale)}
-                </span>
+                    {todo.issue_number && todo.issue_url ? (
+                      <a
+                        href={todo.issue_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="tabular shrink-0 rounded-selector border border-base-300 px-1.5 font-mono text-[11px] text-base-content/50 transition-colors hover:border-base-content/25 hover:text-base-content"
+                        title={t("todos.linkedIssue")}
+                      >
+                        #{todo.issue_number}
+                      </a>
+                    ) : selectMode ? null : (
+                      <button
+                        type="button"
+                        className="row-actions btn btn-ghost btn-xs btn-square text-base-content/40 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-success"
+                        onClick={() => setIssueTodo({ id: todo.id, title: todo.title })}
+                        aria-label={t("todos.issueAria", { title: todo.title })}
+                        title={t("todos.issueTitle")}
+                      >
+                        <CircleDot className="size-3.5" aria-hidden="true" />
+                      </button>
+                    )}
 
-                {selectMode ? null : (
-                  <button
-                    type="button"
-                    className="row-actions btn btn-ghost btn-xs btn-square text-base-content/40 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-error"
-                    onClick={() => run(() => deleteTodo(todo.id))}
-                    aria-label={t("todos.deleteAria", { title: todo.title })}
-                  >
-                    <Trash2 className="size-3.5" aria-hidden="true" />
-                  </button>
+                    <span className="hidden shrink-0 text-[11.5px] text-base-content/35 sm:inline">
+                      {formatRelative(todo.created_at, locale)}
+                    </span>
+
+                    {selectMode ? null : (
+                      <>
+                        <button
+                          type="button"
+                          className="row-actions btn btn-ghost btn-xs btn-square text-base-content/40 group-focus-within:opacity-100 group-hover:opacity-100"
+                          onClick={() => {
+                            setEditingId(todo.id);
+                            setEditTitle(todo.title);
+                          }}
+                          aria-label={t("todos.editAria", { title: todo.title })}
+                        >
+                          <Pencil className="size-3.5" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="row-actions btn btn-ghost btn-xs btn-square text-base-content/40 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-error"
+                          onClick={() => run(() => deleteTodo(todo.id))}
+                          aria-label={t("todos.deleteAria", { title: todo.title })}
+                        >
+                          <Trash2 className="size-3.5" aria-hidden="true" />
+                        </button>
+                      </>
+                    )}
+                  </>
                 )}
               </motion.li>
             ))}
